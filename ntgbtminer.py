@@ -13,14 +13,20 @@ import hashlib
 import struct
 import random
 import time
+import lyra2re2_hash
 
 # JSON-HTTP RPC Configuration
-# This will be particular to your local ~/.bitcoin/bitcoin.conf
+# This will be particular to your local
+# Linux: ~/.monacoin/monacoin.conf
+# Mac: /Users/${USER}/Library/Application Support/Monacoin/monacoin.conf
+# Windows: C:\Users\(username)\AppData\Roaming\Monacoin\monacoin.conf
 
 ### Edit me! v
-RPC_URL     = "http://127.0.0.1:8332"
-RPC_USER    = "bitcoinrpc"
-RPC_PASS    = ""
+RPC_URL     = "http://127.0.0.1:9402"
+RPC_USER    = "monacoinrpc"
+RPC_PASS    = "password"
+ADDRESS     = "MBP2F5fVtK5oQMwXAC4meT7NSi7oQzfr1S"
+MSG         = "torifuku kaiou"
 ### Edit me! ^
 
 ################################################################################
@@ -270,6 +276,9 @@ def block_form_header(block):
 def block_compute_raw_hash(header):
     return hashlib.sha256(hashlib.sha256(header).digest()).digest()[::-1]
 
+def pow_hash(header):
+    return lyra2re2_hash.getPoWHash(header)[::-1]
+
 # Convert block bits to target
 #
 # Arguments:
@@ -384,12 +393,11 @@ def block_mine(block_template, coinbase_message, extranonce_start, address, time
             # Update the block header with the new 32-bit nonce
             block_header = block_header[0:76] + chr(nonce & 0xff) + chr((nonce >> 8) & 0xff) + chr((nonce >> 16) & 0xff) + chr((nonce >> 24) & 0xff)
             # Recompute the block hash
-            block_hash = block_compute_raw_hash(block_header)
 
             # Check if it the block meets the target target hash
-            if block_check_target(block_hash, target_hash):
+            if block_check_target(pow_hash(block_header), target_hash):
                 block_template['nonce'] = nonce
-                block_template['hash'] = bin2hex(block_hash)
+                block_template['hash'] = bin2hex(block_compute_raw_hash(block_header))
                 hps_average = 0 if len(hps_list) == 0 else sum(hps_list)/len(hps_list)
                 return (block_template, hps_average)
 
@@ -419,13 +427,16 @@ def standalone_miner(coinbase_message, address):
     while True:
         print "Mining new block template..."
         mined_block, hps = block_mine(rpc_getblocktemplate(), coinbase_message, 0, address, timeout=60)
-        print "Average Mhash/s: %.4f\n" % (hps / 1000000.0)
 
         if mined_block != None:
-            print "Solved a block! Block hash:", mined_block['hash']
             submission = block_make_submit(mined_block)
-            print "Submitting:", submission, "\n"
             rpc_submitblock(submission)
+            msg = "[{}]Solved a block! Block hash:{}".format(time.strftime('%Y/%m/%d %H:%M:%S'), mined_block['hash'])
+            print msg
+            with open('submitblock.log', 'a') as f:
+                   f.write(msg + "\n")
+
+        print "Average Mhash/s: %.4f\n" % (hps / 1000000.0)
 
 if __name__ == "__main__":
-    standalone_miner(bin2hex("Hello from vsergeev!"), "15PKyTs3jJ3Nyf3i6R7D9tfGCY1ZbtqWdv")
+    standalone_miner(bin2hex(MSG), ADDRESS)
